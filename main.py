@@ -11,7 +11,7 @@ import hashlib
 
 class GetPypi:
     def __init__(self):
-        self.threads = 10
+        self.threads = int(args.threads)
         self.file_list = []
         self.depth = 1
         self.download_folder = args.local_folder
@@ -66,7 +66,7 @@ class GetPypi:
             print(f'Total {total_packages} found...')
             print('Building list of files to fetch....')
             parsed_links = [i['href'] for i in soup.find_all('a', href=True)]
-            with Pool(processes=8) as p:
+            with Pool(processes=self.threads) as p:
                 self.file_list = list(tqdm(p.imap(self.get_package_files, parsed_links),
                                            total=total_packages, unit=' packages'))
             # Remove Nones from file_list
@@ -89,7 +89,7 @@ class GetPypi:
             except Exception as e:
                 print(f'Error {e} creating download folder! Exiting...')
                 return
-        with Pool(processes=8) as p:
+        with Pool(processes=self.threads) as p:
             r = list(tqdm(p.imap(self.download_thread, self.file_list), total=len(self.file_list), unit=' files'))
 
     def download_folder_scan(self):
@@ -159,6 +159,7 @@ if __name__ == '__main__':
                                      usage='By default downloads all packages to ./PyPi folder')
     parser.add_argument('--local_folder', type=str, help='Folder to store packages', default='./PyPi/')
     parser.add_argument('--check_hash', action='store_true', help='Use to check sha256 digest')
+    parser.add_argument('--threads', type=str, help='Number of download threds', default=10)
     args = parser.parse_args()
     base_url = 'https://pypi.org'
     base_dir = '/simple/'
