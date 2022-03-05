@@ -14,7 +14,7 @@ class GetPypi:
         self.threads = 10
         self.file_list = []
         self.depth = 1
-        self.download_folder = './'
+        self.download_folder = args.local_folder
         self.buffer = 4096
         self.session_exists = False
         self.show_logo()
@@ -31,14 +31,14 @@ class GetPypi:
         print(logo)
 
     def get_package_names(self):
-        if os.path.exists(self.download_folder + 'session'):
+        if os.path.exists('session'):
             print('Found previous session. Do you want to resume? (y/n)')
             while (job := input()) not in ['y', 'n']:
                 print('Choose wisely! (y/n)')
             if job == 'y':
                 try:
                     print('Loading previous session...')
-                    with open(self.download_folder + 'session', 'rb') as session:
+                    with open('session', 'rb') as session:
                         self.file_list = pickle.load(session)
                     self.session_exists = True
                 except Exception as e:
@@ -49,7 +49,8 @@ class GetPypi:
                     # The session is loaded, time to rescan downloaded packages
                     # Remove Nones from file_list
                     print(f'Cleaning non-existent packages (if any)...')
-                    for i in range(self.file_list.count(None)):
+                    none_count = self.file_list.count(None)
+                    for i in tqdm(range(none_count), total=none_count):
                         self.file_list.remove(None)
                     print('Done!')
                     self.download_folder_scan()
@@ -70,7 +71,8 @@ class GetPypi:
                                            total=total_packages, unit=' packages'))
             # Remove Nones from file_list
             print(f'Cleaning non-existent packages (if any)...')
-            for i in range(self.file_list.count(None)):
+            none_count = self.file_list.count(None)
+            for i in tqdm(range(none_count), total=none_count):
                 self.file_list.remove(None)
             print('Done')
             with open('session', 'wb') as flist:
@@ -124,15 +126,9 @@ class GetPypi:
     def download_thread(self, link):
         http = urllib3.PoolManager()
         fname = link[0].split('/')[-1]
-        pname = link[0].split('/')[-2]
         r = http.request('GET', link[0], preload_content=False)
         try:
-            os.mkdir(self.download_folder + pname)
-        except Exception as e:
-            print(f'Cannot create package folder in {self.download_folder} due to {e}!')
-            return
-        try:
-            with open(self.download_folder + pname + '/' + fname, 'wb') as file:
+            with open(self.download_folder + fname, 'wb') as file:
                 while True:
                     t_data = r.read(self.buffer)
                     if not t_data:
@@ -147,11 +143,11 @@ class GetPypi:
             if args.check_hash:
                 file_hash = hashlib.sha256()
                 try:
-                    with open(self.download_folder + pname + '/' + fname, 'rb') as file:
+                    with open(self.download_folder + fname, 'rb') as file:
                         for chunk in iter(lambda: file.read(4096), b''):
                             file_hash.update(chunk)
                 except FileNotFoundError:
-                    print(f'Error opening package file {self.download_folder + pname}')
+                    print(f'Error opening package file {self.download_folder}')
                 else:
                     if file_hash.hexdigest() != int(link[1].split('=')[-1]):
                         print(f'Digest error for {fname}')
