@@ -14,29 +14,81 @@ class GetPypi:
         self.depth = 1
         self.download_folder = './'
         self.buffer = 4096
+        self.session_exists = False
+        self.show_logo()
         self.get_package_names()
 
     def show_logo(self):
-        pass
+        logo = """
+ _____     _____ _      _               _           _         
+|  _  |_ _|  _  |_|   _| |___ _ _ _ ___| |___ ___ _| |___ ___ 
+|   __| | |   __| |  | . | . | | | |   | | . | .'| . | -_|  _|
+|__|  |_  |__|  |_|  |___|___|_____|_|_|_|___|__,|___|___|_|  
+      |___|                                                   
+        """
+        print(logo)
 
     def get_package_names(self):
-        print(f'Queuing PyPi base url...')
-        page = requests.get(base_url+base_dir)
-        print(f'Got code {page.status_code}')
-        print('Parsing package list. This could take a while...')
-        soup = BeautifulSoup(page.text, 'lxml')
-        total_packages = len(soup.find_all('a', href=True))
-        print(f'Total {total_packages} found...')
-        print('Building list of files to fetch....')
-        parsed_links = [i['href'] for i in soup.find_all('a', href=True)]
-        with Pool(processes=8) as p:
-            self.file_list = list(tqdm(p.imap(self.get_package_files, parsed_links), total = total_packages, unit = ' packages'))
-        with open('session', 'wb') as flist:
-            print('Backing up package list...')
-            pickle.dump(self.file_list, flist)
-            print('Done!')
+        if os.path.exists(self.download_folder + 'session'):
+            print('Found previous session. Do you want to resume? (y/n)')
+            while (job := input()) not in ['y', 'n']:
+                print('Choose wisely! (y/n)')
+            if job == 'y':
+                try:
+                    print('Loading previous session...')
+                    with open(self.download_folder + 'session') as session:
+                        self.file_list = pickle.load(session)
+                    self.session_exists = True
+                except Exception as e:
+                    print(f'Error {e} loading previous session! Exiting...')
+                    return
+                else:
+                    print('Successfully loaded previous session!')
+                    # The session is loaded, time to rescan downloaded packages
+                    self.download_folder_scan()
+            else:
+                print('Proceeding to download...')
+        if not self.session_exists:
+            print(f'Queuing PyPi base url...')
+            page = requests.get(base_url+base_dir)
+            print(f'Got code {page.status_code}')
+            print('Parsing package list. This could take a while...')
+            soup = BeautifulSoup(page.text, 'lxml')
+            total_packages = len(soup.find_all('a', href=True))
+            print(f'Total {total_packages} found...')
+            print('Building list of files to fetch....')
+            parsed_links = [i['href'] for i in soup.find_all('a', href=True)]
+            with Pool(processes=8) as p:
+                self.file_list = list(tqdm(p.imap(self.get_package_files, parsed_links),
+                                           total=total_packages, unit=' packages'))
+            with open('session', 'wb') as flist:
+                print('Backing up package list...')
+                pickle.dump(self.file_list, flist)
+                print('Done!')
+        if os.path.exists(self.download_folder):
+            print('Download folder exists!')
+            self.download_folder_scan()
+        else:
+            try:
+                os.mkdir(self.download_folder)
+                print('Successfully created download folder!')
+            except Exception as e:
+                print(f'Error {e} creating download folder! Exiting...')
+                return
         with Pool(processes=8) as p:
             r = list(tqdm(p.imap(self.download_thread, self.file_list), total=len(self.file_list), unit=' files'))
+
+    def download_folder_scan(self):
+        print('Scanning download folder for downloaded packages...')
+        for package in self.file_list:
+            package_name = package[0].split('/')[-2]
+            if os.path.exists(self.download_folder + package_name):
+                print(f'Folder for {package_name} exists, checking file...')
+                if os.path.exists(self.download_folder + package_name + package[0].split('/')[-1]):
+                    print(f'Found package file! Removing it from the download queue...')
+                    self.file_list.remove(package)
+                else:
+                    print('Package file not found!')
 
     def get_package_files(self, package):
         current_list = {}
@@ -60,11 +112,15 @@ class GetPypi:
     def download_thread(self, link):
         http = urllib3.PoolManager()
         fname = link[0].split('/')[-1]
+        pname = link[0].split('/')[-2]
         r = http.request('GET', link[0], preload_content=False)
-        # if args.verbose:
-        #    print(f'Downloading {fname}, size: {r.info()["Content-Length"]}')
         try:
-            with open(self.download_folder + fname, 'wb') as file:
+            os.mkdir(self.download_folder + pname)
+        except Exception as e:
+            print(f'Cannot create package folder in {self.download_folder} due to {e}!')
+            return
+        try:
+            with open(self.download_folder + pname + '/' + fname, 'wb') as file:
                 while True:
                     t_data = r.read(self.buffer)
                     if not t_data:
