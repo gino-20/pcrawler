@@ -10,7 +10,7 @@ import pickle
 class GetPypi:
     def __init__(self):
         self.threads = 10
-        self.file_list = {}
+        self.file_list = []
         self.depth = 1
         self.download_folder = './'
         self.buffer = 4096
@@ -30,15 +30,13 @@ class GetPypi:
         print('Building list of files to fetch....')
         parsed_links = [i['href'] for i in soup.find_all('a', href=True)]
         with Pool(processes=8) as p:
-            r = list(tqdm(p.imap(self.get_package_files, parsed_links), total = total_packages, unit = ' packages'))
-        with open('file_list', 'wb') as flist:
+            self.file_list = list(tqdm(p.imap(self.get_package_files, parsed_links), total = total_packages, unit = ' packages'))
+        with open('session', 'wb') as flist:
             print('Backing up package list...')
             pickle.dump(self.file_list, flist)
             print('Done!')
         with Pool(processes=8) as p:
-            r = list(tqdm(p.imap(self.download_thread, list(self.file_list.keys())), total=len(self.file_list), unit=' files'))
-#        for one_file in tqdm(list(self.file_list.keys()), total=len(self.file_list), unit=' files'):
-#            self.download_thread(one_file)
+            r = list(tqdm(p.imap(self.download_thread, self.file_list), total=len(self.file_list), unit=' files'))
 
     def get_package_files(self, package):
         current_list = {}
@@ -57,8 +55,7 @@ class GetPypi:
                 # Append link and the file hash to local dict
                 current_list.update({test_link.split('#')[0]: test_link.split('#')[1]})
             if len(current_list) > 0:
-                self.file_list.update({list(current_list.items())[-1][0]:list(current_list.items())[-1][1]})
-
+                return [list(current_list.items())[-1][0], list(current_list.items())[-1][1]]
 
     def download_thread(self, link):
         http = urllib3.PoolManager()
@@ -78,7 +75,7 @@ class GetPypi:
             print('Download aborted! Removing partial downloaded file...')
             os.remove(self.download_folder + fname)
             print(f'File {fname} successfully deleted!')
-        finally:
+        else:
             # Need to add checksum verification!!!
             return
 
