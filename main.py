@@ -5,6 +5,8 @@ import urllib3
 import os
 from multiprocessing import Pool
 import pickle
+import argparse
+import hashlib
 
 
 class GetPypi:
@@ -36,7 +38,7 @@ class GetPypi:
             if job == 'y':
                 try:
                     print('Loading previous session...')
-                    with open(self.download_folder + 'session') as session:
+                    with open(self.download_folder + 'session', 'rb') as session:
                         self.file_list = pickle.load(session)
                     self.session_exists = True
                 except Exception as e:
@@ -45,6 +47,11 @@ class GetPypi:
                 else:
                     print('Successfully loaded previous session!')
                     # The session is loaded, time to rescan downloaded packages
+                    # Remove Nones from file_list
+                    print(f'Cleaning non-existent packages (if any)...')
+                    for i in range(self.file_list.count(None)):
+                        self.file_list.remove(None)
+                    print('Done!')
                     self.download_folder_scan()
             else:
                 print('Proceeding to download...')
@@ -61,6 +68,11 @@ class GetPypi:
             with Pool(processes=8) as p:
                 self.file_list = list(tqdm(p.imap(self.get_package_files, parsed_links),
                                            total=total_packages, unit=' packages'))
+            # Remove Nones from file_list
+            print(f'Cleaning non-existent packages (if any)...')
+            for i in range(self.file_list.count(None)):
+                self.file_list.remove(None)
+            print('Done')
             with open('session', 'wb') as flist:
                 print('Backing up package list...')
                 pickle.dump(self.file_list, flist)
@@ -132,11 +144,26 @@ class GetPypi:
             os.remove(self.download_folder + fname)
             print(f'File {fname} successfully deleted!')
         else:
-            # Need to add checksum verification!!!
-            return
+            if args.check_hash:
+                file_hash = hashlib.sha256()
+                try:
+                    with open(self.download_folder + pname + '/' + fname, 'rb') as file:
+                        for chunk in iter(lambda: file.read(4096), b''):
+                            file_hash.update(chunk)
+                except FileNotFoundError:
+                    print(f'Error opening package file {self.download_folder + pname}')
+                else:
+                    if file_hash.hexdigest() != int(link[1].split('=')[-1]):
+                        print(f'Digest error for {fname}')
+        return
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Download latest packackages from PyPi repository',
+                                     usage='By default downloads all packages to ./PyPi folder')
+    parser.add_argument('--local_folder', type=str, help='Folder to store packages', default='./PyPi/')
+    parser.add_argument('--check_hash', action='store_true', help='Use to check sha256 digest')
+    args = parser.parse_args()
     base_url = 'https://pypi.org'
     base_dir = '/simple/'
     GetPypi()
