@@ -94,15 +94,10 @@ class GetPypi:
 
     def download_folder_scan(self):
         print('Scanning download folder for downloaded packages...')
-        for package in self.file_list:
-            package_name = package[0].split('/')[-2]
+        for package in tqdm(self.file_list, total=len(self.file_list, unit=' packages')):
+            package_name = package[0].split('/')[-1]
             if os.path.exists(self.download_folder + package_name):
-                print(f'Folder for {package_name} exists, checking file...')
-                if os.path.exists(self.download_folder + package_name + package[0].split('/')[-1]):
-                    print(f'Found package file! Removing it from the download queue...')
-                    self.file_list.remove(package)
-                else:
-                    print('Package file not found!')
+                self.file_list.remove(package)
 
     def get_package_files(self, package):
         current_list = {}
