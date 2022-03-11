@@ -96,7 +96,8 @@ class GetPypi:
         print('Scanning download folder for downloaded packages...')
         for package in tqdm(self.file_list, total=len(self.file_list, unit=' packages')):
             package_name = package[0].split('/')[-1]
-            if os.path.exists(self.download_folder + package_name):
+            local_path = self.download_folder + package[2] + '/'
+            if os.path.exists(local_path + package_name):
                 self.file_list.remove(package)
 
     def get_package_files(self, package):
@@ -116,14 +117,18 @@ class GetPypi:
                 # Append link and the file hash to local dict
                 current_list.update({test_link.split('#')[0]: test_link.split('#')[1]})
             if len(current_list) > 0:
-                return [list(current_list.items())[-1][0], list(current_list.items())[-1][1]]
+                return [list(current_list.items())[-1][0], list(current_list.items())[-1][1], package]
 
     def download_thread(self, link):
         http = urllib3.PoolManager()
         fname = link[0].split('/')[-1]
+        package_name = link[2].replace('/','')
+        local_path = self.download_folder + package_name
+        if not os.path.exists(local_path):
+            os.mkdir(local_path)
         r = http.request('GET', link[0], preload_content=False)
         try:
-            with open(self.download_folder + fname, 'wb') as file:
+            with open(local_path + '/' + fname, 'wb') as file:
                 while True:
                     t_data = r.read(self.buffer)
                     if not t_data:
@@ -132,17 +137,17 @@ class GetPypi:
                 r.release_conn()
         except KeyboardInterrupt:
             print('Download aborted! Removing partial downloaded file...')
-            os.remove(self.download_folder + fname)
+            os.remove(local_path + '/' + fname)
             print(f'File {fname} successfully deleted!')
         else:
             if args.check_hash:
                 file_hash = hashlib.sha256()
                 try:
-                    with open(self.download_folder + fname, 'rb') as file:
+                    with open(local_path + '/' + fname, 'rb') as file:
                         for chunk in iter(lambda: file.read(4096), b''):
                             file_hash.update(chunk)
                 except FileNotFoundError:
-                    print(f'Error opening package file {self.download_folder}')
+                    print(f'Error opening package file {local_path}')
                 else:
                     if file_hash.hexdigest() != int(link[1].split('=')[-1]):
                         print(f'Digest error for {fname}')
